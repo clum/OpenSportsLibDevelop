@@ -1,0 +1,119 @@
+SYSTEM:
+  paths:
+    save_dir: ./checkpoints_video
+  reproducibility:
+    use_seed: false
+
+DATA:
+  common:
+    dataset_name: mvfouls
+    data_root: /home/vorajv/dataset/OSL-XFoul
+    splits:
+      train:
+        type: annotations_train.json
+        annotation_path: ${DATA.common.splits.train.source_path}/train.json
+        source_path: ${DATA.common.data_root}
+        dataloader:
+          batch_size: 8
+          shuffle: true
+          num_workers: 4
+          pin_memory: true
+          mp_context: spawn
+          persistent_workers: true
+          prefetch_factor: 4
+      valid:
+        type: annotations_valid.json
+        annotation_path: ${DATA.common.splits.valid.source_path}/valid.json
+        source_path: ${DATA.common.data_root}
+        dataloader:
+          batch_size: 1
+          shuffle: false
+          num_workers: 1
+          pin_memory: true
+          mp_context: spawn
+          persistent_workers: true
+          prefetch_factor: 4
+      test:
+        type: annotations_test.json
+        annotation_path: ${DATA.common.splits.test.source_path}/test.json
+        source_path: ${DATA.common.data_root}
+        dataloader:
+          batch_size: 1
+          shuffle: false
+          num_workers: 0
+          pin_memory: true
+          mp_context: spawn
+          persistent_workers: true
+          prefetch_factor: 4
+  inputs:
+    video:
+      sampling:
+        input_fps: 25
+        target_fps: 17
+        start_frame: 63
+        end_frame: 87
+      augmentations:
+        random_affine: true
+        translate: [0.1, 0.1]
+        affine_scale: [0.9, 1.0]
+        random_perspective: true
+        distortion_scale: 0.3
+        perspective_prob: 0.5
+        random_rotation: true
+        rotation_degrees: 5
+        color_jitter: true
+        jitter_params: [0.2, 0.2, 0.2, 0.1]
+        random_horizontal_flip: true
+        flip_prob: 0.5
+        random_crop: false
+      params:
+        view_type: multi
+        num_classes: 8
+
+MODEL:
+  components:
+    video_encoder:
+      source:
+        provider: torchvision
+        name: mvit_v2_s
+      params:
+        pretrained_model: mvit_v2_s
+      overrides:
+        unfreeze_head: true
+        unfreeze_last_n_layers: 3
+    video_adapter:
+      source:
+        provider: opensportslib
+        registry: neck
+        name: MV_Aggregate
+      params:
+        agr_type: max
+    task_head:
+      source:
+        provider: opensportslib
+        registry: head
+        name: MV_LinearLayer
+      params:
+        num_classes: 8
+
+TRAIN:
+  optimizer:
+    type: AdamW
+    lr: 0.0001
+    backbone_lr: 0.00005
+    head_lr: 0.001
+    betas: [0.9, 0.999]
+    eps: 0.0000001
+    weight_decay: 0.001
+    amsgrad: false
+  scheduler:
+    type: StepLR
+    step_size: 3
+    gamma: 0.1
+  sampling:
+    use_weighted_loss: true
+  selection:
+    monitor: balanced_accuracy
+    mode: max
+  checkpoint:
+    save_every: 2
